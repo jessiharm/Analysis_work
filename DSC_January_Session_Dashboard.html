@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSC January Session Attendance: Report & Dashboard</title>
+<style>
+  :root {
+    --surface-0: #f7f7f5; --surface-1: #f1efe8; --surface-2: #ffffff;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+    --text-danger: #a32d2d; --text-success: #27500a; --text-warning: #8a5a00;
+    --accent: #2a78d6; --border: rgba(11,11,11,0.10); --radius: 8px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 2rem 1.5rem 4rem; background: var(--surface-0); color: var(--text-primary); font-family: var(--font-sans); }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0 0 4px; }
+  .subtitle { font-size: 14px; color: var(--text-secondary); margin: 0 0 1.75rem; }
+  .card { background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.25rem; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; color: var(--text-primary); }
+  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.25rem; }
+  .stat { background: var(--surface-1); border-radius: var(--radius); padding: 1rem; text-align: center; }
+  .stat .num { font-size: 24px; font-weight: 500; margin: 0; }
+  .stat .lab { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 0.5px solid var(--border); }
+  th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+  .heat-cell { text-align: center; border-radius: 4px; padding: 10px 4px; font-size: 13px; font-weight: 500; }
+  .note { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+  .flag { background: #fbf0e0; border: 0.5px solid #e0b876; border-radius: var(--radius); padding: 10px 12px; font-size: 13px; margin-bottom: 6px; }
+  .action { background: #eaf1fa; border: 0.5px solid #b9d3ef; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+  .action .title { font-weight: 600; font-size: 13px; margin: 0 0 4px; color: var(--accent); }
+  .action .detail { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+  select { height: 34px; border-radius: var(--radius); border: 0.5px solid var(--border); background: var(--surface-2); padding: 0 10px; font-size: 13px; color: var(--text-primary); font-family: var(--font-sans); margin-bottom: 12px; }
+  footer { max-width: 880px; margin: 2rem auto 0; font-size: 12px; color: var(--text-muted); border-top: 0.5px solid var(--border); padding-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DSC January session attendance: report & dashboard</h1>
+  <p class="subtitle">Session-level analysis, January 2026. Names, customer IDs, and facility name removed. ASP, Aspire, and Off-Ice sessions excluded.</p>
+
+  <div class="statgrid">
+    <div class="stat"><p class="num" id="statSessions">-</p><p class="lab">sessions analyzed</p></div>
+    <div class="stat"><p class="num" id="statAttendance">-</p><p class="lab">total attendance</p></div>
+    <div class="stat"><p class="num" id="statBreakeven">-</p><p class="lab">below 5-person breakeven</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Average attendance by day of week and time of day</h2>
+    <div id="heatmap"></div>
+    <p class="note">Evenings run consistently higher than mornings across nearly every day, most pronounced Tuesday and Thursday evenings.</p>
+  </div>
+
+  <div class="card">
+    <h2>Attendance & utilization by session category</h2>
+    <table id="catTable"><thead><tr><th>Category</th><th>Sessions</th><th>Avg. attendance</th><th>Avg. utilization</th></tr></thead><tbody></tbody></table>
+    <p class="note">Assumed capacity: General 32, Team 12, all other categories 24. Estimates, not official limits, treat as directional.</p>
+  </div>
+
+  <div class="card">
+    <h2>Utilization by time of day</h2>
+    <label for="catSelect">Category</label>
+    <select id="catSelect"></select>
+    <div id="utilBars"></div>
+    <p class="note">Capacity figures are estimates and may vary by specific session. Treat as directional, not exact.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="color:var(--text-warning)">Data quality flag: sessions with signups but zero attendance</h2>
+    <div id="anomalies"></div>
+    <p class="note">Double-digit signups with zero recorded attendance is consistent with a cancelled session that was not marked as cancelled in the system, not a genuine mass no-show. Worth confirming before treating these as real no-shows.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="color:var(--accent)">Suggested actions</h2>
+    <div id="actions"></div>
+  </div>
+
+  <div class="card">
+    <h2>Highest-attended sessions</h2>
+    <table id="topTable"><thead><tr><th>Day</th><th>Time</th><th>Session</th><th>Attended</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Lowest-attended sessions (excluding zero-attendance anomalies above)</h2>
+    <table id="bottomTable"><thead><tr><th>Day</th><th>Time</th><th>Session</th><th>Attended</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <footer>Independent internal analysis of January 2026 session data. Facility identity and all participant-level details removed for external sharing.</footer>
+</div>
+
+<script>
+const DATA = {"heatmap": [{"day": "Monday", "time": "Early Morning (before 9am)", "value": 2.6}, {"day": "Monday", "time": "Late Morning (9-11:59am)", "value": 6.9}, {"day": "Monday", "time": "Afternoon (12-4:59pm)", "value": 8.7}, {"day": "Monday", "time": "Evening (5pm+)", "value": 16.8}, {"day": "Tuesday", "time": "Early Morning (before 9am)", "value": 5.7}, {"day": "Tuesday", "time": "Late Morning (9-11:59am)", "value": 4.4}, {"day": "Tuesday", "time": "Afternoon (12-4:59pm)", "value": 8.2}, {"day": "Tuesday", "time": "Evening (5pm+)", "value": 25.8}, {"day": "Wednesday", "time": "Early Morning (before 9am)", "value": 3.8}, {"day": "Wednesday", "time": "Late Morning (9-11:59am)", "value": 3.8}, {"day": "Wednesday", "time": "Afternoon (12-4:59pm)", "value": 7.0}, {"day": "Wednesday", "time": "Evening (5pm+)", "value": 14.6}, {"day": "Thursday", "time": "Early Morning (before 9am)", "value": 5.0}, {"day": "Thursday", "time": "Late Morning (9-11:59am)", "value": 4.0}, {"day": "Thursday", "time": "Afternoon (12-4:59pm)", "value": 9.0}, {"day": "Thursday", "time": "Evening (5pm+)", "value": 17.5}, {"day": "Friday", "time": "Early Morning (before 9am)", "value": 4.3}, {"day": "Friday", "time": "Late Morning (9-11:59am)", "value": 5.5}, {"day": "Friday", "time": "Afternoon (12-4:59pm)", "value": 8.8}, {"day": "Friday", "time": "Evening (5pm+)", "value": 8.0}, {"day": "Saturday", "time": "Early Morning (before 9am)", "value": 6.1}, {"day": "Saturday", "time": "Late Morning (9-11:59am)", "value": 8.5}, {"day": "Saturday", "time": "Afternoon (12-4:59pm)", "value": 9.6}, {"day": "Saturday", "time": "Evening (5pm+)", "value": null}, {"day": "Sunday", "time": "Early Morning (before 9am)", "value": 3.0}, {"day": "Sunday", "time": "Late Morning (9-11:59am)", "value": 2.7}, {"day": "Sunday", "time": "Afternoon (12-4:59pm)", "value": null}, {"day": "Sunday", "time": "Evening (5pm+)", "value": null}], "categories": [{"Session Category": "Freestyle", "sessions": 143, "avg_attendance": 9.35, "avg_util": 0.39}, {"Session Category": "Warm-Up", "sessions": 14, "avg_attendance": 5.857, "avg_util": 0.244}, {"Session Category": "Skills", "sessions": 11, "avg_attendance": 5.455, "avg_util": 0.227}, {"Session Category": "Team", "sessions": 19, "avg_attendance": 2.632, "avg_util": 0.219}, {"Session Category": "General", "sessions": 292, "avg_attendance": 6.952, "avg_util": 0.217}, {"Session Category": "Adult General", "sessions": 3, "avg_attendance": 2.667, "avg_util": 0.111}], "utilByCat": {"General": {"Early Morning (before 9am)": 0.131, "Late Morning (9-11:59am)": 0.146, "Afternoon (12-4:59pm)": 0.282, "Evening (5pm+)": 0.481}, "Warm-Up": {"Early Morning (before 9am)": null, "Late Morning (9-11:59am)": 0.244, "Afternoon (12-4:59pm)": null, "Evening (5pm+)": null}, "Freestyle": {"Early Morning (before 9am)": 0.396, "Late Morning (9-11:59am)": 0.42, "Afternoon (12-4:59pm)": 0.371, "Evening (5pm+)": 0.599}, "Skills": {"Early Morning (before 9am)": null, "Late Morning (9-11:59am)": 0.18, "Afternoon (12-4:59pm)": 0.25, "Evening (5pm+)": 0.292}, "Team": {"Early Morning (before 9am)": null, "Late Morning (9-11:59am)": null, "Afternoon (12-4:59pm)": 0.219, "Evening (5pm+)": null}, "Adult General": {"Early Morning (before 9am)": null, "Late Morning (9-11:59am)": 0.111, "Afternoon (12-4:59pm)": null, "Evening (5pm+)": null}}, "top10": [{"Day of Week": "Tuesday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 33, "Signed_Up": 33}, {"Day of Week": "Tuesday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 25, "Signed_Up": 25}, {"Day of Week": "Tuesday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 25, "Signed_Up": 25}, {"Day of Week": "Friday", "Time Label": "4:30 PM", "Session Detail": "Freestyle Level 1/2", "Attended": 25, "Signed_Up": 25}, {"Day of Week": "Thursday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 24, "Signed_Up": 24}, {"Day of Week": "Thursday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 24, "Signed_Up": 24}, {"Day of Week": "Monday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 23, "Signed_Up": 23}, {"Day of Week": "Monday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 23, "Signed_Up": 23}, {"Day of Week": "Monday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Attended": 23, "Signed_Up": 23}, {"Day of Week": "Tuesday", "Time Label": "4:30 PM", "Session Detail": "General - No Level 3S", "Attended": 23, "Signed_Up": 23}], "bottom10": [{"Day of Week": "Friday", "Time Label": "6:30 AM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Saturday", "Time Label": "9:30 AM", "Session Detail": "Skills Level 1-3", "Attended": 1, "Signed_Up": 2}, {"Day of Week": "Monday", "Time Label": "6:30 AM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Wednesday", "Time Label": "10:00 AM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Wednesday", "Time Label": "3:15 PM", "Session Detail": "Team", "Attended": 1, "Signed_Up": 2}, {"Day of Week": "Saturday", "Time Label": "6:45 AM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Saturday", "Time Label": "11:45 AM", "Session Detail": "Freestyle Level 3/4 (Mini Session)", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Sunday", "Time Label": "8:00 AM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Monday", "Time Label": "8:15 AM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}, {"Day of Week": "Monday", "Time Label": "1:30 PM", "Session Detail": "General", "Attended": 1, "Signed_Up": 1}], "anomalies": [{"Event Date": "01/09/2026", "Day of Week": "Friday", "Time Label": "6:30 PM", "Session Detail": "General", "Signed_Up": 8}, {"Event Date": "01/16/2026", "Day of Week": "Friday", "Time Label": "5:45 PM", "Session Detail": "Skills - Level 2/3 Power", "Signed_Up": 9}, {"Event Date": "01/16/2026", "Day of Week": "Friday", "Time Label": "6:30 PM", "Session Detail": "General", "Signed_Up": 6}, {"Event Date": "01/29/2026", "Day of Week": "Thursday", "Time Label": "5:15 PM", "Session Detail": "General - No Level 3S", "Signed_Up": 29}], "totalSessions": 482, "totalAttendance": 3567, "belowBreakeven": 191, "belowBreakevenPct": 39.6, "actions": [["Consolidate or cut chronically empty recurring slots", "Saturday 6:45 AM General (avg 3% utilization, 3x in January), Monday 6:30 AM General (4%, 3x), and roughly 35 other recurring morning/midday slots run under 15% utilization across every day of the week. See the workbook's Session_Data tab, filtered to Utilization under 0.15, for the full list."], ["Add capacity at the real pressure points", "Tuesday 5:15 PM General (80% avg utilization, one week hit 103%), Wednesday 5:15 PM Freestyle (75%), and Monday 5:15 PM General (71%) are the only recurring slots genuinely running out of room. These are candidates for a second section or added capacity, not for cuts."], ["Review Team session structure", "Wednesday 3:15 PM and Friday 3:00 PM Team both average under 2 attendees against a 12-person capacity, 4 times each in January. Fewer, larger Team sessions may serve the same participants more efficiently than this many small ones."], ["Fix the data gap at Friday 6:30 PM General", "This slot shows 0 attendance despite 6 to 8 signups on two separate dates (1/9 and 1/16), consistent with an unreflected cancellation rather than genuine no-shows. Worth confirming with scheduling before this slot's numbers are used for planning."], ["Don't cut Friday broadly", "Friday shows the most total wasted capacity in raw numbers, but only because it has the most General slots scheduled (14, tied for the most of any day). Its actual utilization rate (22%) is mid-pack, not uniquely bad. Target the specific chronically empty slots wherever they fall in the week, not the day as a whole."]]};
+
+document.getElementById('statSessions').textContent = DATA.totalSessions;
+document.getElementById('statAttendance').textContent = DATA.totalAttendance.toLocaleString();
+document.getElementById('statBreakeven').textContent = DATA.belowBreakeven + ' (' + DATA.belowBreakevenPct + '%)';
+
+const days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const times = ["Early Morning (before 9am)","Late Morning (9-11:59am)","Afternoon (12-4:59pm)","Evening (5pm+)"];
+const timeShort = {"Early Morning (before 9am)":"Early AM","Late Morning (9-11:59am)":"Late AM","Afternoon (12-4:59pm)":"Afternoon","Evening (5pm+)":"Evening"};
+
+function colorFor(v, max) {
+  if (v === null || v === undefined) return '#f1efe8';
+  const t = Math.min(v / max, 1);
+  const r = Math.round(255 - t*(255-42));
+  const g = Math.round(255 - t*(255-120));
+  const b = Math.round(255 - t*(255-214));
+  return `rgb(${r},${g},${b})`;
+}
+const maxVal = Math.max(...DATA.heatmap.filter(d=>d.value!==null).map(d=>d.value));
+
+let heatHtml = '<div style="display:grid; grid-template-columns: 90px repeat(4, 1fr); gap: 4px; font-size: 12px;">';
+heatHtml += '<div></div>';
+times.forEach(t => heatHtml += `<div style="text-align:center; color:var(--text-secondary); font-weight:600; padding-bottom:4px;">${timeShort[t]}</div>`);
+days.forEach(d => {
+  heatHtml += `<div style="display:flex; align-items:center; color:var(--text-secondary); font-weight:600;">${d}</div>`;
+  times.forEach(t => {
+    const cell = DATA.heatmap.find(x => x.day===d && x.time===t);
+    const v = cell ? cell.value : null;
+    const bg = colorFor(v, maxVal);
+    const textColor = v !== null && v/maxVal > 0.55 ? '#fff' : '#0b0b0b';
+    heatHtml += `<div class="heat-cell" style="background:${bg}; color:${textColor};">${v !== null ? v : '—'}</div>`;
+  });
+});
+heatHtml += '</div>';
+document.getElementById('heatmap').innerHTML = heatHtml;
+
+const catBody = document.querySelector('#catTable tbody');
+DATA.categories.forEach(c => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${c['Session Category']}</td><td>${c.sessions}</td><td>${c.avg_attendance}</td><td>${Math.round(c.avg_util*100)}%</td>`;
+  catBody.appendChild(tr);
+});
+
+const catSelect = document.getElementById('catSelect');
+DATA.categories.forEach(c => {
+  const opt = document.createElement('option');
+  opt.value = c['Session Category'];
+  opt.textContent = c['Session Category'];
+  catSelect.appendChild(opt);
+});
+
+function renderUtilBars(cat) {
+  const utilData = DATA.utilByCat[cat];
+  let utilHtml = '';
+  times.forEach(t => {
+    const v = utilData[t];
+    const pct = v !== null && v !== undefined ? Math.round(v*100) : null;
+    utilHtml += `<div style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); margin-bottom:3px;">
+        <span>${timeShort[t]}</span><span>${pct !== null ? pct + '%' : 'no data'}</span>
+      </div>
+      <div style="background:var(--surface-1); border-radius:6px; height:10px; overflow:hidden;">
+        <div style="background:var(--accent); height:100%; width:${pct !== null ? pct : 0}%;"></div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('utilBars').innerHTML = utilHtml;
+}
+catSelect.addEventListener('change', () => renderUtilBars(catSelect.value));
+renderUtilBars('General');
+catSelect.value = 'General';
+
+let anomHtml = '';
+DATA.anomalies.forEach(a => {
+  anomHtml += `<div class="flag"><strong>${a['Day of Week']} ${a['Time Label']}</strong>, ${a['Session Detail']}: ${a['Signed_Up']} signed up, 0 attended (${a['Event Date']})</div>`;
+});
+document.getElementById('anomalies').innerHTML = anomHtml;
+
+let actionsHtml = '';
+DATA.actions.forEach(a => {
+  actionsHtml += `<div class="action"><p class="title">${a[0]}</p><p class="detail">${a[1]}</p></div>`;
+});
+document.getElementById('actions').innerHTML = actionsHtml;
+
+function fillTable(id, rows) {
+  const body = document.querySelector('#' + id + ' tbody');
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r['Day of Week']}</td><td>${r['Time Label']}</td><td>${r['Session Detail']}</td><td>${r.Attended}</td>`;
+    body.appendChild(tr);
+  });
+}
+fillTable('topTable', DATA.top10);
+fillTable('bottomTable', DATA.bottom10);
+</script>
+</body>
+</html>
